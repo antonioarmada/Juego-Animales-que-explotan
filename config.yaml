@@ -1,0 +1,11 @@
+title: ANIMALES QUE EXPLOTAN
+fullscreen: true
+window_width: 1280
+window_height: 720
+show_cursor: false
+fps: 10
+music_volume: 0.05
+background_color:
+  - 57
+  - 67
+  - 82

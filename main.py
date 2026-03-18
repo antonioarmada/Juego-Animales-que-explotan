@@ -1,116 +1,144 @@
-# para compiliar .exe lo anoto ya que encontre como hacia:
-# pip install pyinstaller
-# pyinstaller --onefile <your_script_name>.py
-# ojo que no copia las carpetas con otros archivos, mover manualmente a "dist"
-
-# pantalla como global, display como argumento a la clase
+import random
 
 import pygame
-import random
-from pygame import mixer
+
+from globales import create_display, load_config, resource_path
 from sprite import Sprite
 
-pygame.init()
 
-from globales import infoPantalla, gameDisplay
-from sprite import Sprite as Sprite_animado
+ANIMALES_CONFIG = (
+    ("img/perro_sprite.png", "snd/perro.wav", 400, 9),
+    ("img/oveja_sprite.png", "snd/oveja.wav", 400, 9),
+    ("img/leon_sprite.png", "snd/leon.wav", 400, 9),
+    ("img/gallina_sprite.png", "snd/gallo.wav", 400, 9),
+    ("img/gato_sprite.png", "snd/gato.wav", 400, 9),
+    ("img/elefante_sprite.png", "snd/elefante.wav", 400, 9),
+)
+EXPLOSION_CONFIG = ("img/explosion_sprite.png", "snd/explosion.wav", 400, 10)
 
-mixer.init()
-mixer.music.load('snd/musica.mp3')
-mixer.music.set_volume(0.05)
-pygame.mixer.music.play(-1,0.0)
 
-corriendo = True
-perro=Sprite("img/perro_sprite.png","snd/perro.wav",400,9)
-oveja=Sprite("img/oveja_sprite.png","snd/oveja.wav",400,9)
-leon=Sprite("img/leon_sprite.png","snd/leon.wav",400,9)
-gato=Sprite("img/gato_sprite.png","snd/gato.wav",400,9)
-gallina=Sprite("img/gallina_sprite.png","snd/gallo.wav",400,9)
-elefante=Sprite("img/elefante_sprite.png","snd/elefante.wav",400,9)
-explosion=Sprite("img/explosion_sprite.png","snd/explosion.wav",400,10)
-animales = (perro,oveja,leon,gallina,gato,elefante)
-
-# FER: AL FINAL PASA TODO DENTRO DE ESTA CLASE, ME PARECE QUE ES AL PEDO QUE ESTÉ, HACE QUE TODAS LAS VARIABLES TENGAN "self."
-# Y ES MUY FEO LEERLO, QUIZA LO MEJOR EN ESTE CASO SACAR TODO FUERA Y USAR VARIABLES GLOBALES O PASAR PARAMETROS A LAS 
-# FUNCIONES
-#       SI USAS GLOBALES ACORDATE QUE PYTHON LEE LAS GLOBALES DENTRO DE UNA FUNCIÓN PERO PARA ESCRIBIRLAS HAY QUE 
-# DECLARLAS DENTRO COMO "Global nombreVariable"
 class Juego:
-
-    def __init__(self):
-        self.indexAnimal = 0
-        self.spriteActual = animales[self.indexAnimal]
-        self.frameActual=0
-        self.boundingBox = pygame.Rect(0,0, self.spriteActual.anchoFrame, self.spriteActual.alto)
-        self.boundingBox.topleft = (self.spriteActual.posX,self.spriteActual.posY)
+    def __init__(self, pantalla, config):
+        self.pantalla = pantalla
+        self.config = config
+        self.screen_rect = pantalla.get_rect()
+        self.clock = pygame.time.Clock()
+        self.corriendo = True
+        self.frame_actual = 0
         self.explotando = False
-        fuenteArial = pygame.font.SysFont('Arial', 15)
-        self.txtEscape = fuenteArial.render('presionar ESCAPE para salir', True, (150, 150, 150))
+
+        self.animales = self._cargar_animales()
+        self.explosion = self._crear_sprite(*EXPLOSION_CONFIG)
+        self.index_animal = 0
+        self.sprite_actual = self.animales[self.index_animal]
+        self.bounding_box = pygame.Rect(
+            0, 0, self.sprite_actual.ancho_frame, self.sprite_actual.alto
+        )
+
+        fuente = pygame.font.SysFont("Arial", 15)
+        self.txt_escape = fuente.render(
+            "presionar ESCAPE para salir", True, (150, 150, 150)
+        )
+
+        self._iniciar_musica()
+        self._mover_animal_actual()
+
+    def _crear_sprite(self, archivo_img, archivo_snd, ancho_frame, cant_frames):
+        return Sprite(
+            resource_path(archivo_img),
+            resource_path(archivo_snd),
+            ancho_frame,
+            cant_frames,
+        )
+
+    def _cargar_animales(self):
+        return tuple(self._crear_sprite(*animal_config) for animal_config in ANIMALES_CONFIG)
+
+    def _iniciar_musica(self):
+        pygame.mixer.music.load(resource_path("snd/musica.mp3"))
+        pygame.mixer.music.set_volume(float(self.config["music_volume"]))
+        pygame.mixer.music.play(-1, 0.0)
+
+    def _mover_animal_actual(self):
+        max_x = max(0, self.screen_rect.width - self.sprite_actual.ancho_frame)
+        max_y = max(0, self.screen_rect.height - self.sprite_actual.alto)
+        self.sprite_actual.set_position(
+            random.randint(0, max_x),
+            random.randint(0, max_y),
+        )
+        self.bounding_box.topleft = self.sprite_actual.position
+
+    def _avanzar_animal(self):
+        self.index_animal = (self.index_animal + 1) % len(self.animales)
+        self.sprite_actual = self.animales[self.index_animal]
+        self.frame_actual = 0
+        self._mover_animal_actual()
 
     def eventos_loop(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                global corriendo 
-                corriendo = False
-                break
-            if event.type == pygame.KEYDOWN:
-                if  pygame.key.name(event.key) == "escape":
-                    corriendo = False
-                    pygame.quit()
-                    quit()
-                    break
+                self.corriendo = False
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                self.corriendo = False
 
-    def huvoColision(self):
-        pygame.mouse.set_pos(0,0)
-        self.spriteActual.playSND(False)                    # para sonido explosion si no termino
-        if self.indexAnimal < len(animales)-1:
-            self.indexAnimal += 1
-        else: 
-            self.indexAnimal = 0
-        self.spriteActual = animales[self.indexAnimal]
-        self.spriteActual.posX = random.randint(0,infoPantalla.current_w-self.spriteActual.anchoFrame)
-        self.spriteActual.posY = random.randint(0,infoPantalla.current_h-self.spriteActual.alto)
-        explosion.posY = self.spriteActual.posY
-        explosion.posX = self.spriteActual.posX
-        self.boundingBox.topleft = (self.spriteActual.posX,self.spriteActual.posY)
-        
-    
-    def logica_loop(self):      
-        colision = self.boundingBox.collidepoint(pygame.mouse.get_pos())
-        if colision and not self.explotando: 
-            self.spriteActual.playSND(False)                  # para sonido animal
-            self.explotando= True
-            self.spriteActual = explosion
-            self.frameActual = 0
+    def hubo_colision(self):
+        pygame.mouse.set_pos(0, 0)
+        animal_actual = self.sprite_actual
+        animal_actual.stop_sound()
+        self.explosion.set_position(*animal_actual.position)
+        self.sprite_actual = self.explosion
+        self.frame_actual = 0
+        self.explotando = True
+
+    def logica_loop(self):
+        colision = self.bounding_box.collidepoint(pygame.mouse.get_pos())
+        if colision and not self.explotando:
+            self.hubo_colision()
 
     def render_loop(self):
-        global gameDisplay
-        global infoPantalla
-        gameDisplay.fill((57,67,82))
-        if self.frameActual < self.spriteActual.cantFrames-1:
-            self.frameActual +=1
+        self.pantalla.fill(tuple(self.config["background_color"]))
+
+        if self.frame_actual < self.sprite_actual.cant_frames - 1:
+            self.frame_actual += 1
         else:
-            self.frameActual = 0
-            if self.explotando:                             # si terminó de reproducir el sprite de explosion..
-                self.explotando= False
-                self.huvoColision()
-        self.spriteActual.mostrar(self.spriteActual.posX, self.spriteActual.posY, self.frameActual, gameDisplay)
-        self.spriteActual.playSND(True)
-        #pygame.draw.rect(gameDisplay, (200,200,200,50), self.boundingBox,1) si necesitamos ver el boundigbox
-        gameDisplay.blit (self.txtEscape,(infoPantalla.current_w/2-self.txtEscape.get_size()[0]/2,infoPantalla.current_h-30))  
-        # muestra texto Esc
-        pygame.display.update()
+            self.frame_actual = 0
+            if self.explotando:
+                self.explotando = False
+                self._avanzar_animal()
+
+        self.sprite_actual.draw(self.pantalla, self.frame_actual)
+        self.sprite_actual.play_sound()
+        self.pantalla.blit(
+            self.txt_escape,
+            (
+                self.screen_rect.centerx - self.txt_escape.get_width() / 2,
+                self.screen_rect.height - 30,
+            ),
+        )
+        pygame.display.flip()
 
     def ejecutar(self):
-        while corriendo:
+        while self.corriendo:
             self.eventos_loop()
             self.logica_loop()
-            self.render_loop()  
-            clock.tick(10)
+            self.render_loop()
+            self.clock.tick(int(self.config["fps"]))
 
 
-clock = pygame.time.Clock()
-miJuego = Juego()
-miJuego.ejecutar()
-pygame.quit()
-quit()
+def main():
+    pygame.init()
+    pygame.mixer.init()
+
+    config = load_config()
+    pantalla = create_display(config)
+
+    try:
+        juego = Juego(pantalla, config)
+        juego.ejecutar()
+    finally:
+        pygame.mixer.music.stop()
+        pygame.quit()
+
+
+if __name__ == "__main__":
+    main()
