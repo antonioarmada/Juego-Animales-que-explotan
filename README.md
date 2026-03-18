@@ -19,3 +19,4 @@ El juego lee [config.yaml](/Users/antonioemilioarmadacastillo/Documents/Invoa/Ju
 - `show_cursor`
 - `fps`
 - `music_volume`
+- `hover_explode_delay_seconds`

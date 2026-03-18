@@ -13,6 +13,7 @@ DEFAULT_CONFIG = {
     "show_cursor": False,
     "fps": 10,
     "music_volume": 0.05,
+    "hover_explode_delay_seconds": 0.5,
     "background_color": [57, 67, 82],
 }
 
@@ -36,6 +37,9 @@ def load_config(config_file="config.yaml"):
         config.update(loaded_config)
 
     config["background_color"] = [int(value) for value in config["background_color"]]
+    config["hover_explode_delay_seconds"] = max(
+        0.0, float(config["hover_explode_delay_seconds"])
+    )
     return config
 
 

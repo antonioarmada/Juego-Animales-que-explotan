@@ -27,6 +27,10 @@ class Juego:
         self.corriendo = True
         self.frame_actual = 0
         self.explotando = False
+        self.hover_collision_started_at = None
+        self.hover_explode_delay_ms = int(
+            float(self.config["hover_explode_delay_seconds"]) * 1000
+        )
 
         self.animales = self._cargar_animales()
         self.explosion = self._crear_sprite(*EXPLOSION_CONFIG)
@@ -78,6 +82,7 @@ class Juego:
         self.index_animal = (self.index_animal + 1) % len(self.animales)
         self.sprite_actual = self.animales[self.index_animal]
         self.frame_actual = 0
+        self.hover_collision_started_at = None
         self._mover_animal_actual()
 
     def eventos_loop(self):
@@ -95,10 +100,28 @@ class Juego:
         self.sprite_actual = self.explosion
         self.frame_actual = 0
         self.explotando = True
+        self.hover_collision_started_at = None
 
     def logica_loop(self):
+        if self.explotando:
+            self.hover_collision_started_at = None
+            return
+
         colision = self.bounding_box.collidepoint(pygame.mouse.get_pos())
-        if colision and not self.explotando:
+        if not colision:
+            self.hover_collision_started_at = None
+            return
+
+        if self.hover_explode_delay_ms == 0:
+            self.hubo_colision()
+            return
+
+        current_ticks = pygame.time.get_ticks()
+        if self.hover_collision_started_at is None:
+            self.hover_collision_started_at = current_ticks
+            return
+
+        if current_ticks - self.hover_collision_started_at >= self.hover_explode_delay_ms:
             self.hubo_colision()
 
     def render_loop(self):
