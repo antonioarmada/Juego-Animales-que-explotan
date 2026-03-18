@@ -15,6 +15,7 @@ ANIMALES_CONFIG = (
     ("img/elefante_sprite.png", "snd/elefante.wav", 400, 9),
 )
 EXPLOSION_CONFIG = ("img/explosion_sprite.png", "snd/explosion.wav", 400, 10)
+CURSOR_IMAGE_PATH = "img/cursor_varita.png"
 
 
 class Juego:
@@ -29,6 +30,11 @@ class Juego:
 
         self.animales = self._cargar_animales()
         self.explosion = self._crear_sprite(*EXPLOSION_CONFIG)
+        self.cursor_image = pygame.image.load(resource_path(CURSOR_IMAGE_PATH)).convert_alpha()
+        self.cursor_hotspot = (
+            int(self.cursor_image.get_width() * 2 / 3),
+            int(self.cursor_image.get_height() * 2 / 3),
+        )
         self.index_animal = 0
         self.sprite_actual = self.animales[self.index_animal]
         self.bounding_box = pygame.Rect(
@@ -115,7 +121,16 @@ class Juego:
                 self.screen_rect.height - 30,
             ),
         )
+        self._render_cursor()
         pygame.display.flip()
+
+    def _render_cursor(self):
+        mouse_x, mouse_y = pygame.mouse.get_pos()
+        cursor_pos = (
+            mouse_x - self.cursor_hotspot[0],
+            mouse_y - self.cursor_hotspot[1],
+        )
+        self.pantalla.blit(self.cursor_image, cursor_pos)
 
     def ejecutar(self):
         while self.corriendo:
