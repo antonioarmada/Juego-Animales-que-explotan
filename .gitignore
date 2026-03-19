@@ -1,5 +1,6 @@
 /__pycache__
 .venv/
+/sessions/
 .DS_Store
 /img/.DS_Store
 /snd/.DS_Store

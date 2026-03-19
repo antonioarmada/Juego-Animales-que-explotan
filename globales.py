@@ -6,7 +6,7 @@ import yaml
 
 
 DEFAULT_CONFIG = {
-    "title": "ANIMALES QUE EXPLOTAN",
+    "title": "MAGIA EN EL ZOOLÓGICO",
     "fullscreen": True,
     "window_width": 1280,
     "window_height": 720,
@@ -14,6 +14,11 @@ DEFAULT_CONFIG = {
     "fps": 10,
     "music_volume": 0.05,
     "hover_explode_delay_seconds": 0.5,
+    "time_out_seconds": 10,
+    "session_target_count": 6,
+    "cursor_trace_hz": 20,
+    "data_output_dir": "sessions",
+    "show_session_progress": True,
     "background_color": [57, 67, 82],
 }
 
@@ -40,6 +45,11 @@ def load_config(config_file="config.yaml"):
     config["hover_explode_delay_seconds"] = max(
         0.0, float(config["hover_explode_delay_seconds"])
     )
+    config["time_out_seconds"] = max(0.0, float(config["time_out_seconds"]))
+    config["session_target_count"] = max(1, int(config["session_target_count"]))
+    config["cursor_trace_hz"] = max(1, int(config["cursor_trace_hz"]))
+    config["data_output_dir"] = str(config["data_output_dir"])
+    config["show_session_progress"] = bool(config["show_session_progress"])
     return config
 
 
