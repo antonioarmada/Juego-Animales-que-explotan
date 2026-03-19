@@ -28,9 +28,24 @@ def resource_path(relative_path):
     return str(base_path / relative_path)
 
 
+def executable_dir():
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+def resolve_config_path(config_file="config.yaml"):
+    external_path = executable_dir() / config_file
+    if external_path.exists():
+        return external_path
+
+    bundled_base_path = Path(getattr(sys, "_MEIPASS", executable_dir()))
+    return bundled_base_path / config_file
+
+
 def load_config(config_file="config.yaml"):
     config = DEFAULT_CONFIG.copy()
-    config_path = Path(resource_path(config_file))
+    config_path = resolve_config_path(config_file)
 
     if config_path.exists():
         with config_path.open("r", encoding="utf-8") as handle:

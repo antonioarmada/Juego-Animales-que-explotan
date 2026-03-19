@@ -9,6 +9,33 @@ pip install -r requirements.txt
 python main.py
 ```
 
+## Build de Windows en GitHub
+
+El ejecutable de Windows se genera con el workflow [build-windows.yml](/Users/antonioemilioarmadacastillo/Documents/Invoa/Juegos/Animales-explotan/.github/workflows/build-windows.yml).
+
+Para obtenerlo:
+
+1. Sube el repositorio a GitHub.
+2. En GitHub, entra a la pestaña `Actions`.
+3. Abre el workflow `Build Windows`.
+4. Ejecuta `Run workflow` para lanzarlo manualmente.
+5. Cuando termine, abre la corrida y descarga el artifact `AnimalesExplotan-windows`.
+
+Tambien puedes dispararlo creando y subiendo un tag que empiece con `v`, por ejemplo:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+El artifact descargado contiene la carpeta `AnimalesExplotan` con:
+
+- `AnimalesExplotan.exe`
+- `config.yaml`
+- los archivos necesarios del juego (`img`, `snd`, librerias y runtime)
+
+Conviene distribuir esa carpeta completa, no solo el `.exe`.
+
 ## Configuracion
 
 El juego lee [config.yaml](/Users/antonioemilioarmadacastillo/Documents/Invoa/Juegos/Animales-explotan/config.yaml) al iniciar. Ahi podés cambiar opciones como:
@@ -25,6 +52,8 @@ El juego lee [config.yaml](/Users/antonioemilioarmadacastillo/Documents/Invoa/Ju
 - `cursor_trace_hz`
 - `data_output_dir`
 - `show_session_progress`
+
+En builds empaquetados, el juego primero busca un `config.yaml` externo al lado del ejecutable. Si no existe, usa el `config.yaml` incluido dentro del bundle como fallback.
 
 ## Telemetria
 
