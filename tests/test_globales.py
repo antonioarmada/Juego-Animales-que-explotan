@@ -37,6 +37,12 @@ class ConfigResolutionTest(unittest.TestCase):
 
 
 class DisplayCreationTest(unittest.TestCase):
+    def test_enable_high_dpi_support_is_noop_outside_windows(self):
+        with mock.patch.object(globales.sys, "platform", "linux"):
+            result = globales.enable_high_dpi_support()
+
+        self.assertFalse(result)
+
     def test_create_display_sets_window_icon(self):
         config = {
             **globales.DEFAULT_CONFIG,

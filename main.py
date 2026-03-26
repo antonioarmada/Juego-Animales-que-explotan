@@ -3,7 +3,7 @@ import re
 
 import pygame
 
-from globales import create_display, load_config, resource_path
+from globales import create_display, enable_high_dpi_support, load_config, resource_path
 from pdf_export import exportar_sesion_a_pdf
 from sprite import Sprite
 from telemetry import SessionRecorder
@@ -35,6 +35,9 @@ TRACE_COLORS = (
     (173, 255, 102),
     (255, 129, 203),
 )
+CLOSE_BUTTON_MARGIN = 18
+CLOSE_BUTTON_RADIUS = 12
+CLOSE_BUTTON_HIT_PADDING = 12
 
 
 def _color_luminance(color):
@@ -252,7 +255,7 @@ class Juego:
 
     def _handle_start_screen_keydown(self, event):
         if event.key == pygame.K_ESCAPE:
-            self.corriendo = False
+            self._request_exit()
             return
         if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
             self._start_session()
@@ -274,6 +277,9 @@ class Juego:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self._request_exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if self._get_close_button_hit_rect().collidepoint(event.pos):
+                    self._request_exit()
             elif event.type == pygame.KEYDOWN:
                 if self.state == GAME_STATE_START_SCREEN:
                     self._handle_start_screen_keydown(event)
@@ -411,6 +417,7 @@ class Juego:
             )
 
         self._render_footer()
+        self._render_close_button()
         self._render_cursor()
         pygame.display.flip()
 
@@ -459,6 +466,7 @@ class Juego:
         self.sprite_actual.play_sound()
         self._render_progress()
         self._render_footer()
+        self._render_close_button()
         self._render_cursor()
         pygame.display.flip()
 
@@ -544,6 +552,7 @@ class Juego:
         self._draw_secondary_metrics(secundarios)
         self._draw_report_logo()
         self._render_finished_help()
+        self._render_close_button()
         self._render_cursor()
         pygame.display.flip()
 
@@ -741,6 +750,65 @@ class Juego:
         )
         self.pantalla.blit(self.cursor_image, cursor_pos)
 
+    def _get_close_button_visual_rect(self):
+        diameter = CLOSE_BUTTON_RADIUS * 2
+        return pygame.Rect(
+            self.screen_rect.width - CLOSE_BUTTON_MARGIN - diameter,
+            CLOSE_BUTTON_MARGIN,
+            diameter,
+            diameter,
+        )
+
+    def _get_close_button_hit_rect(self):
+        return self._get_close_button_visual_rect().inflate(
+            CLOSE_BUTTON_HIT_PADDING * 2,
+            CLOSE_BUTTON_HIT_PADDING * 2,
+        )
+
+    def _render_close_button(self):
+        rect = self._get_close_button_visual_rect()
+        button_surface = pygame.Surface(rect.size, pygame.SRCALPHA)
+        hovered = self._get_close_button_hit_rect().collidepoint(pygame.mouse.get_pos())
+        background_color = tuple(self.config["background_color"])
+        stroke_rgb = (
+            (246, 248, 252) if _color_luminance(background_color) < 128 else (48, 58, 74)
+        )
+        stroke_alpha = 168 if hovered else 118
+        fill_alpha = 30 if hovered else 0
+        center = (rect.width // 2, rect.height // 2)
+
+        if fill_alpha:
+            pygame.draw.circle(
+                button_surface,
+                (*stroke_rgb, fill_alpha),
+                center,
+                CLOSE_BUTTON_RADIUS,
+            )
+        pygame.draw.circle(
+            button_surface,
+            (*stroke_rgb, stroke_alpha),
+            center,
+            CLOSE_BUTTON_RADIUS,
+            2,
+        )
+
+        line_margin = 7
+        pygame.draw.line(
+            button_surface,
+            (*stroke_rgb, stroke_alpha),
+            (line_margin, line_margin),
+            (rect.width - line_margin, rect.height - line_margin),
+            2,
+        )
+        pygame.draw.line(
+            button_surface,
+            (*stroke_rgb, stroke_alpha),
+            (rect.width - line_margin, line_margin),
+            (line_margin, rect.height - line_margin),
+            2,
+        )
+        self.pantalla.blit(button_surface, rect.topleft)
+
     def ejecutar(self):
         while self.corriendo:
             now_ms = pygame.time.get_ticks()
@@ -752,6 +820,7 @@ class Juego:
 
 
 def main():
+    enable_high_dpi_support()
     pygame.init()
     pygame.mixer.init()
 

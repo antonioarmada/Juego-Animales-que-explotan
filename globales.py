@@ -1,3 +1,4 @@
+import ctypes
 from pathlib import Path
 import sys
 
@@ -79,6 +80,48 @@ def _set_window_icon(icon_path=WINDOW_ICON_PATH):
         pygame.display.set_icon(icon_surface)
     except pygame.error:
         return
+
+
+def enable_high_dpi_support():
+    if sys.platform != "win32":
+        return False
+
+    windll = getattr(ctypes, "windll", None)
+    if windll is None:
+        return False
+
+    user32 = getattr(windll, "user32", None)
+    shcore = getattr(windll, "shcore", None)
+
+    if user32 is not None:
+        set_awareness_context = getattr(user32, "SetProcessDpiAwarenessContext", None)
+        if set_awareness_context is not None:
+            try:
+                # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+                if set_awareness_context(ctypes.c_void_p(-4)):
+                    return True
+            except Exception:
+                pass
+
+    if shcore is not None:
+        set_awareness = getattr(shcore, "SetProcessDpiAwareness", None)
+        if set_awareness is not None:
+            try:
+                # PROCESS_PER_MONITOR_DPI_AWARE
+                if set_awareness(2) == 0:
+                    return True
+            except Exception:
+                pass
+
+    if user32 is not None:
+        set_dpi_aware = getattr(user32, "SetProcessDPIAware", None)
+        if set_dpi_aware is not None:
+            try:
+                return bool(set_dpi_aware())
+            except Exception:
+                pass
+
+    return False
 
 
 def create_display(config):
