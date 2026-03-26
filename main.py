@@ -26,15 +26,38 @@ GAME_STATE_FINISHED = "finished"
 SAFE_SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 MAX_SESSION_ID_LENGTH = 64
 TRACE_COLORS = (
-    (217, 4, 41),
-    (58, 12, 163),
-    (0, 119, 182),
-    (27, 153, 139),
-    (251, 133, 0),
-    (106, 76, 147),
-    (46, 196, 182),
-    (230, 57, 70),
+    (255, 104, 136),
+    (103, 214, 255),
+    (255, 206, 84),
+    (109, 241, 210),
+    (255, 159, 90),
+    (200, 148, 255),
+    (173, 255, 102),
+    (255, 129, 203),
 )
+
+
+def _color_luminance(color):
+    red, green, blue = color
+    return (0.2126 * red) + (0.7152 * green) + (0.0722 * blue)
+
+
+def _blend_color(color, target_channel, factor):
+    return tuple(
+        int(round(channel + ((target_channel - channel) * factor))) for channel in color
+    )
+
+
+def _ensure_color_contrast(color, background_color, min_luminance_delta=92):
+    color_luminance = _color_luminance(color)
+    background_luminance = _color_luminance(background_color)
+    luminance_delta = abs(color_luminance - background_luminance)
+    if luminance_delta >= min_luminance_delta:
+        return color
+
+    target_channel = 255 if background_luminance < 128 else 0
+    factor = min(1.0, ((min_luminance_delta - luminance_delta) / 255) + 0.35)
+    return _blend_color(color, target_channel, factor)
 
 
 class Juego:
@@ -458,7 +481,12 @@ class Juego:
 
         kpis = [
             ("Aciertos", self._format_metric_objetivos(summary)),
-            ("Tiempo medio", self._format_metric_ms(summary, "promedio_tiempo_adquisicion_objetivo_ms")),
+            (
+                "Tiempo medio",
+                self._format_metric_seconds(
+                    summary, "promedio_tiempo_adquisicion_objetivo_ms"
+                ),
+            ),
             ("Eficiencia", self._format_metric_ratio(summary, "promedio_eficiencia_trayectoria")),
             (
                 "Reingresos promedio",
@@ -478,7 +506,7 @@ class Juego:
                     ),
                     (
                         "Mediana tiempo adquisicion",
-                        self._format_metric_ms(
+                        self._format_metric_seconds(
                             summary, "mediana_tiempo_adquisicion_objetivo_ms"
                         ),
                     ),
@@ -491,7 +519,7 @@ class Juego:
             (
                 "Sesion",
                 [
-                    ("Duracion", self._format_metric_ms(summary, "duracion_sesion_ms")),
+                    ("Duracion", self._format_metric_seconds(summary, "duracion_sesion_ms")),
                     (
                         "Distancia total",
                         self._format_metric_px(summary, "distancia_total_cursor_px"),
@@ -604,18 +632,6 @@ class Juego:
                 if label == "Finalizada en":
                     line_y += 6
 
-            divider_top = section_y - 6
-            divider_bottom = box_rect.bottom - 24
-            if section_index < len(secundarios) - 1:
-                divider_x = section_x + column_width + (section_gap / 2)
-                pygame.draw.line(
-                    self.pantalla,
-                    (225, 230, 236),
-                    (divider_x, divider_top),
-                    (divider_x, divider_bottom),
-                    1,
-                )
-
     def _render_finished_help(self):
         help_text = self.small_font.render(
             "ESC cierra la sesion", True, (210, 210, 210)
@@ -649,11 +665,11 @@ class Juego:
         except Exception as exc:
             return f"Error exportando PDF: {exc}."
 
-    def _format_metric_ms(self, summary, key):
+    def _format_metric_seconds(self, summary, key):
         value = summary.get(key)
         if value is None or value == "":
             return "-"
-        return f"{float(value):.0f} ms"
+        return f"{float(value) / 1000:.1f} s"
 
     def _format_metric_ratio(self, summary, key):
         value = summary.get(key)
@@ -685,6 +701,8 @@ class Juego:
             return
 
         overlay = pygame.Surface(self.screen_rect.size, pygame.SRCALPHA)
+        background_color = tuple(self.config["background_color"])
+        outline_rgb = (246, 248, 252) if _color_luminance(background_color) < 128 else (15, 23, 42)
         points = [
             (row["x"], row["y"], row["explotando"], row["indice_objetivo"])
             for row in self.session_recorder.cursor_trace_rows
@@ -695,9 +713,23 @@ class Juego:
             if start_attempt != end_attempt:
                 continue
             base_color = TRACE_COLORS[(max(1, end_attempt) - 1) % len(TRACE_COLORS)]
-            alpha = 110 if exploding else 78
-            color = (*base_color, alpha)
-            pygame.draw.line(overlay, color, (start_x, start_y), (end_x, end_y), 3)
+            trace_rgb = _ensure_color_contrast(base_color, background_color)
+            outline_alpha = 150 if exploding else 118
+            trace_alpha = 210 if exploding else 170
+            pygame.draw.line(
+                overlay,
+                (*outline_rgb, outline_alpha),
+                (start_x, start_y),
+                (end_x, end_y),
+                7,
+            )
+            pygame.draw.line(
+                overlay,
+                (*trace_rgb, trace_alpha),
+                (start_x, start_y),
+                (end_x, end_y),
+                5,
+            )
 
         self.pantalla.blit(overlay, (0, 0))
 

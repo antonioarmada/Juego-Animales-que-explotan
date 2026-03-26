@@ -13,6 +13,8 @@ python main.py
 
 El ejecutable de Windows se genera con el workflow [build-windows.yml](/Users/antonioemilioarmadacastillo/Documents/Invoa/Juegos/Animales-explotan/.github/workflows/build-windows.yml).
 
+El build usa [img/icono-ventana.ico](/Users/antonioemilioarmadacastillo/Documents/Invoa/Juegos/Animales-explotan/img/icono-ventana.ico) como icono del archivo `AnimalesExplotan.exe`.
+
 Para obtenerlo:
 
 1. Sube el repositorio a GitHub.
@@ -35,6 +37,21 @@ El artifact descargado contiene la carpeta `AnimalesExplotan` con:
 - los archivos necesarios del juego (`img`, `snd`, librerias y runtime)
 
 Conviene distribuir esa carpeta completa, no solo el `.exe`.
+
+## Iconos
+
+El proyecto usa dos archivos de icono:
+
+- [img/icono-ventana.png](/Users/antonioemilioarmadacastillo/Documents/Invoa/Juegos/Animales-explotan/img/icono-ventana.png): icono de la ventana del juego en `pygame`
+- [img/icono-ventana.ico](/Users/antonioemilioarmadacastillo/Documents/Invoa/Juegos/Animales-explotan/img/icono-ventana.ico): icono del ejecutable de Windows generado con PyInstaller
+
+Si cambias el PNG, puedes regenerar el `.ico` con:
+
+```bash
+.venv/bin/python -c "from PIL import Image; img = Image.open('img/icono-ventana.png').convert('RGBA'); img.save('img/icono-ventana.ico', format='ICO', sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)])"
+```
+
+Despues de eso, vuelve a ejecutar el workflow `Build Windows` en GitHub Actions o crea un tag nuevo con prefijo `v` para generar un artifact actualizado.
 
 ## Configuracion
 

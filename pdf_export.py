@@ -160,11 +160,14 @@ def _build_summary_page(resumen, traza_cursor, styles):
 
     kpis = [
         ("Objetivos completados", _format_objetivos(resumen)),
-        ("Tiempo medio por objetivo", _format_ms(resumen["promedio_tiempo_adquisicion_objetivo_ms"])),
+        (
+            "Tiempo medio por objetivo",
+            _format_seconds(resumen["promedio_tiempo_adquisicion_objetivo_ms"]),
+        ),
         ("Eficiencia media", _format_ratio(resumen["promedio_eficiencia_trayectoria"])),
         (
             "Hover medio hasta explosion",
-            _format_ms(resumen["promedio_tiempo_hover_hasta_explosion_ms"]),
+            _format_seconds(resumen["promedio_tiempo_hover_hasta_explosion_ms"]),
         ),
     ]
     kpi_table = Table(
@@ -193,11 +196,11 @@ def _build_summary_page(resumen, traza_cursor, styles):
 
     secundarios = [
         ("Estado", resumen["estado"]),
-        ("Duracion de la sesion", _format_ms(resumen["duracion_sesion_ms"])),
+        ("Duracion de la sesion", _format_seconds(resumen["duracion_sesion_ms"])),
         ("Distancia total del cursor", f"{resumen['distancia_total_cursor_px']} px"),
         (
             "Mediana tiempo adquisicion",
-            _format_ms(resumen["mediana_tiempo_adquisicion_objetivo_ms"]),
+            _format_seconds(resumen["mediana_tiempo_adquisicion_objetivo_ms"]),
         ),
         ("Promedio reingresos hover", str(resumen["promedio_reingresos_hover"])),
         ("Tasa de completitud", _format_percent(resumen["tasa_completitud"])),
@@ -291,8 +294,8 @@ def _chunk_rows(rows, chunk_size):
         yield rows[start : start + chunk_size]
 
 
-def _format_ms(value):
-    return f"{float(value):.0f} ms"
+def _format_seconds(value):
+    return f"{float(value) / 1000:.1f} s"
 
 
 def _format_ratio(value):

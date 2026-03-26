@@ -39,6 +39,7 @@ jobs:
             --windowed \
             --onedir \
             --name AnimalesExplotan \
+            --icon img/icono-ventana.ico \
             --add-data "img;img" \
             --add-data "snd;snd" \
             --add-data "config.yaml;." \

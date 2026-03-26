@@ -21,6 +21,7 @@ DEFAULT_CONFIG = {
     "show_session_progress": True,
     "background_color": [57, 67, 82],
 }
+WINDOW_ICON_PATH = "img/icono-ventana.png"
 
 
 def resource_path(relative_path):
@@ -68,6 +69,18 @@ def load_config(config_file="config.yaml"):
     return config
 
 
+def _set_window_icon(icon_path=WINDOW_ICON_PATH):
+    icon_resource = Path(resource_path(icon_path))
+    if not icon_resource.exists():
+        return
+
+    try:
+        icon_surface = pygame.image.load(str(icon_resource))
+        pygame.display.set_icon(icon_surface)
+    except pygame.error:
+        return
+
+
 def create_display(config):
     fullscreen = bool(config["fullscreen"])
     flags = pygame.FULLSCREEN if fullscreen else 0
@@ -79,6 +92,7 @@ def create_display(config):
         size = (int(config["window_width"]), int(config["window_height"]))
 
     pantalla = pygame.display.set_mode(size, flags)
+    _set_window_icon()
     pygame.display.set_caption(str(config["title"]))
     pygame.mouse.set_visible(bool(config["show_cursor"]))
     return pantalla
