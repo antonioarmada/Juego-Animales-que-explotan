@@ -859,6 +859,17 @@ class Juego:
             return "-"
         return f"{completados}/{configurados}"
 
+    def _get_trace_rgb(self, target_index, background_color):
+        base_color = TRACE_COLORS[(max(1, target_index) - 1) % len(TRACE_COLORS)]
+        return _ensure_color_contrast(base_color, background_color)
+
+    def _get_target_dimensions(self, animal_id):
+        for animal in self.animales:
+            if animal["id"] == animal_id:
+                sprite = animal["sprite"]
+                return (sprite.ancho_frame, sprite.alto)
+        return None
+
     def _draw_trace_background(self):
         if self.session_recorder is None or len(self.session_recorder.cursor_trace_rows) < 2:
             return
@@ -875,8 +886,7 @@ class Juego:
             end_x, end_y, exploding, end_attempt = points[index]
             if start_attempt != end_attempt:
                 continue
-            base_color = TRACE_COLORS[(max(1, end_attempt) - 1) % len(TRACE_COLORS)]
-            trace_rgb = _ensure_color_contrast(base_color, background_color)
+            trace_rgb = self._get_trace_rgb(end_attempt, background_color)
             outline_alpha = 150 if exploding else 118
             trace_alpha = 210 if exploding else 170
             pygame.draw.line(
@@ -892,6 +902,23 @@ class Juego:
                 (start_x, start_y),
                 (end_x, end_y),
                 self._ui(5),
+            )
+
+        for target in self.session_recorder.target_rows:
+            target_dimensions = self._get_target_dimensions(target.animal_id)
+            if target_dimensions is None:
+                continue
+            target_rect = pygame.Rect(
+                target.spawn_x,
+                target.spawn_y,
+                target_dimensions[0],
+                target_dimensions[1],
+            )
+            pygame.draw.rect(
+                overlay,
+                (*self._get_trace_rgb(target.target_index, background_color), 160),
+                target_rect,
+                max(1, self._ui(2)),
             )
 
         self.pantalla.blit(overlay, (0, 0))
