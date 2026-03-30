@@ -614,8 +614,8 @@ class Juego:
         rendered_cards = []
 
         for label, value in kpis:
-            value_surface = self.kpi_value_font.render(value, True, (26, 32, 44))
-            label_surface = self.kpi_label_font.render(label, True, (98, 108, 125))
+            value_surface = self.kpi_value_font.render(value, True, (0, 0, 0))
+            label_surface = self.kpi_label_font.render(label, True, (0, 0, 0))
             rendered_cards.append((label_surface, value_surface))
 
         card_width = max(
@@ -651,19 +651,21 @@ class Juego:
                 card_width,
                 card_height,
             )
+            card_surface = pygame.Surface(rect.size, pygame.SRCALPHA)
             pygame.draw.rect(
-                self.pantalla,
-                (246, 248, 252),
-                rect,
+                card_surface,
+                (246, 248, 252, 128),
+                card_surface.get_rect(),
                 border_radius=border_radius,
             )
             pygame.draw.rect(
-                self.pantalla,
+                card_surface,
                 (214, 221, 230),
-                rect,
+                card_surface.get_rect(),
                 border_width,
                 border_radius=border_radius,
             )
+            self.pantalla.blit(card_surface, rect.topleft)
             content_height = value_surface.get_height() + content_gap + label_surface.get_height()
             content_top = rect.y + int((rect.height - content_height) / 2)
             self.pantalla.blit(
@@ -687,15 +689,15 @@ class Juego:
         section_gap_y = self._ui(18)
         line_gap = self._ui(10)
         title_gap = self._ui(18)
-        box_title = self.small_font.render("Indicadores secundarios", True, (70, 78, 92))
+        box_title = self.small_font.render("Indicadores secundarios", True, (0, 0, 0))
         section_layouts = []
         uniform_section_width = self._ui(192)
         uniform_section_height = 0
 
         for section_title, items in secundarios:
-            section_title_surface = self.small_font.render(section_title, True, (70, 78, 92))
+            section_title_surface = self.small_font.render(section_title, True, (0, 0, 0))
             item_surfaces = [
-                self.small_font.render(f"{label}: {value}", True, (26, 32, 44))
+                self.small_font.render(f"{label}: {value}", True, (0, 0, 0))
                 for label, value in items
             ]
             content_width = max(
@@ -737,14 +739,21 @@ class Juego:
             box_height,
         )
         border_radius = self._ui(20)
-        pygame.draw.rect(self.pantalla, (248, 250, 252), box_rect, border_radius=border_radius)
+        box_surface = pygame.Surface(box_rect.size, pygame.SRCALPHA)
         pygame.draw.rect(
-            self.pantalla,
+            box_surface,
+            (248, 250, 252, 128),
+            box_surface.get_rect(),
+            border_radius=border_radius,
+        )
+        pygame.draw.rect(
+            box_surface,
             (214, 221, 230),
-            box_rect,
+            box_surface.get_rect(),
             max(1, self._ui(2)),
             border_radius=max(1, self._ui(18)),
         )
+        self.pantalla.blit(box_surface, box_rect.topleft)
 
         box_title_y = box_rect.y + box_padding_y
         self.pantalla.blit(box_title, (box_rect.x + box_padding_x, box_title_y))
