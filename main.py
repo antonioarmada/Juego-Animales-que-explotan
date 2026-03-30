@@ -3,7 +3,14 @@ import re
 
 import pygame
 
-from globales import create_display, enable_high_dpi_support, load_config, resource_path
+from globales import (
+    calculate_ui_scales,
+    create_display,
+    enable_high_dpi_support,
+    get_windows_dpi_scale,
+    load_config,
+    resource_path,
+)
 from pdf_export import exportar_sesion_a_pdf
 from sprite import Sprite
 from telemetry import SessionRecorder
@@ -38,6 +45,7 @@ TRACE_COLORS = (
 CLOSE_BUTTON_MARGIN = 18
 CLOSE_BUTTON_RADIUS = 12
 CLOSE_BUTTON_HIT_PADDING = 12
+DEFAULT_FONT_NAME = "Arial"
 
 
 def _color_luminance(color):
@@ -68,6 +76,13 @@ class Juego:
         self.pantalla = pantalla
         self.config = config
         self.screen_rect = pantalla.get_rect()
+        self.dpi_scale = get_windows_dpi_scale()
+        self.ui_scale, self.text_scale = calculate_ui_scales(
+            self.config,
+            self.screen_rect.size,
+            dpi_scale=self.dpi_scale,
+        )
+        self._font_cache = {}
         self.clock = pygame.time.Clock()
         self.corriendo = True
         self.state = GAME_STATE_START_SCREEN
@@ -85,11 +100,7 @@ class Juego:
 
         self.animales = self._cargar_animales()
         self.explosion = self._crear_sprite(*EXPLOSION_CONFIG)
-        self.cursor_image = pygame.image.load(resource_path(CURSOR_IMAGE_PATH)).convert_alpha()
-        self.cursor_hotspot = (
-            int(self.cursor_image.get_width() * 2 / 3),
-            int(self.cursor_image.get_height() * 2 / 3),
-        )
+        self.cursor_image = self._cargar_cursor()
         self.logo_image = self._cargar_logo()
         self.report_logo_image = self._cargar_logo(max_width=110)
         self.index_animal = 0
@@ -106,11 +117,11 @@ class Juego:
         self.finished_message = ""
         self.finished_summary = None
 
-        self.title_font = pygame.font.SysFont("Arial", 48)
-        self.ui_font = pygame.font.SysFont("Arial", 24)
-        self.small_font = pygame.font.SysFont("Arial", 16)
-        self.kpi_value_font = pygame.font.SysFont("Arial", 30, bold=True)
-        self.kpi_label_font = pygame.font.SysFont("Arial", 14)
+        self.title_font = self._font(48, bold=True)
+        self.ui_font = self._font(24)
+        self.small_font = self._font(16)
+        self.kpi_value_font = self._font(30, bold=True)
+        self.kpi_label_font = self._font(14)
         self.txt_escape = self.small_font.render(
             "presionar ESCAPE para salir", True, (150, 150, 150)
         )
@@ -144,13 +155,48 @@ class Juego:
         pygame.mixer.music.set_volume(float(self.config["music_volume"]))
         pygame.mixer.music.play(-1, 0.0)
 
+    def _ui(self, value):
+        return max(1, int(round(float(value) * self.ui_scale)))
+
+    def _text_ui(self, value):
+        return max(1, int(round(float(value) * self.text_scale)))
+
+    def _font(self, size, bold=False):
+        scaled_size = self._text_ui(size)
+        cache_key = (scaled_size, bold)
+        if cache_key not in self._font_cache:
+            self._font_cache[cache_key] = pygame.font.SysFont(
+                DEFAULT_FONT_NAME,
+                scaled_size,
+                bold=bold,
+            )
+        return self._font_cache[cache_key]
+
+    def _scale_surface(self, surface, scale):
+        target_width = max(1, int(round(surface.get_width() * scale)))
+        target_height = max(1, int(round(surface.get_height() * scale)))
+        return pygame.transform.smoothscale(surface, (target_width, target_height))
+
+    def _cargar_cursor(self):
+        cursor_image = pygame.image.load(resource_path(CURSOR_IMAGE_PATH)).convert_alpha()
+        if abs(self.ui_scale - 1.0) > 0.01:
+            cursor_image = self._scale_surface(cursor_image, self.ui_scale)
+        self.cursor_hotspot = (
+            int(cursor_image.get_width() * 2 / 3),
+            int(cursor_image.get_height() * 2 / 3),
+        )
+        return cursor_image
+
     def _cargar_logo(self, max_width=150):
         logo = pygame.image.load(resource_path(LOGO_IMAGE_PATH)).convert_alpha()
-        target_max_width = min(max_width, self.screen_rect.width - 160)
+        target_max_width = min(
+            self._ui(max_width),
+            max(1, self.screen_rect.width - self._ui(160)),
+        )
         scale = target_max_width / logo.get_width()
         target_size = (
-            int(logo.get_width() * scale),
-            int(logo.get_height() * scale),
+            max(1, int(round(logo.get_width() * scale))),
+            max(1, int(round(logo.get_height() * scale))),
         )
         return pygame.transform.smoothscale(logo, target_size)
 
@@ -292,7 +338,6 @@ class Juego:
         return max(0, now_ms - self.hover_collision_started_at)
 
     def _explode_current_target(self, now_ms):
-        pygame.mouse.set_pos(0, 0)
         animal_actual = self.current_animal["sprite"]
         animal_actual.stop_sound()
         self.explosion.set_position(*animal_actual.position)
@@ -366,55 +411,50 @@ class Juego:
         help_text = self.small_font.render(
             "ENTER para comenzar", True, (150, 150, 150)
         )
-        logo_y = max(28, self.screen_rect.centery - 225)
-        title_y = logo_y + self.logo_image.get_height() + 34
-        prompt_y = title_y + 84
-
-        self.pantalla.blit(
-            self.logo_image,
-            (
-                self.screen_rect.centerx - self.logo_image.get_width() / 2,
-                logo_y,
-            ),
-        )
-        self.pantalla.blit(
-            title,
-            (
-                self.screen_rect.centerx - title.get_width() / 2,
-                title_y,
-            ),
-        )
-        self.pantalla.blit(
-            prompt,
-            (
-                self.screen_rect.centerx - prompt.get_width() / 2,
-                prompt_y,
-            ),
-        )
-        self.pantalla.blit(
-            session_text,
-            (
-                self.screen_rect.centerx - session_text.get_width() / 2,
-                prompt_y + 40,
-            ),
-        )
-        self.pantalla.blit(
-            help_text,
-            (
-                self.screen_rect.centerx - help_text.get_width() / 2,
-                prompt_y + 86,
-            ),
-        )
-
+        error_text = None
         if self.input_error:
             error_text = self.small_font.render(self.input_error, True, (255, 120, 120))
+
+        footer_reserved = self.txt_escape.get_height() + self._ui(28)
+        spacing_after_logo = self._ui(24)
+        spacing_large = self._ui(34)
+        spacing_medium = self._ui(18)
+        spacing_small = self._ui(12)
+        surfaces = [
+            self.logo_image,
+            title,
+            prompt,
+            session_text,
+            help_text,
+        ]
+        spacings = [
+            spacing_after_logo,
+            spacing_large,
+            spacing_medium,
+            spacing_medium,
+        ]
+        if error_text is not None:
+            surfaces.append(error_text)
+            spacings.append(spacing_small)
+
+        content_height = sum(surface.get_height() for surface in surfaces) + sum(spacings)
+        start_y = max(
+            self._ui(20),
+            int((self.screen_rect.height - footer_reserved - content_height) / 2),
+        )
+        current_y = start_y
+
+        for index, surface in enumerate(surfaces):
             self.pantalla.blit(
-                error_text,
+                surface,
                 (
-                    self.screen_rect.centerx - error_text.get_width() / 2,
-                    prompt_y + 122,
+                    self.screen_rect.centerx - surface.get_width() / 2,
+                    current_y,
                 ),
             )
+            current_y += surface.get_height()
+            if index < len(spacings):
+                current_y += spacings[index]
 
         self._render_footer()
         self._render_close_button()
@@ -426,7 +466,7 @@ class Juego:
             self.txt_escape,
             (
                 self.screen_rect.centerx - self.txt_escape.get_width() / 2,
-                self.screen_rect.height - 30,
+                self.screen_rect.height - self.txt_escape.get_height() - self._ui(12),
             ),
         )
 
@@ -439,7 +479,8 @@ class Juego:
             True,
             (220, 220, 220),
         )
-        self.pantalla.blit(progress_text, (20, 20))
+        margin = self._ui(20)
+        self.pantalla.blit(progress_text, (margin, margin))
 
     def render_loop(self, now_ms):
         if self.state == GAME_STATE_START_SCREEN:
@@ -478,14 +519,17 @@ class Juego:
         subtitle = self.small_font.render(
             self.finished_message or "Sesion finalizada.", True, (210, 210, 210)
         )
+        current_y = self._ui(26)
         self.pantalla.blit(
             title,
-            (self.screen_rect.centerx - title.get_width() / 2, 40),
+            (self.screen_rect.centerx - title.get_width() / 2, current_y),
         )
+        current_y += title.get_height() + self._ui(10)
         self.pantalla.blit(
             subtitle,
-            (self.screen_rect.centerx - subtitle.get_width() / 2, 95),
+            (self.screen_rect.centerx - subtitle.get_width() / 2, current_y),
         )
+        current_y += subtitle.get_height() + self._ui(22)
 
         kpis = [
             ("Aciertos", self._format_metric_objetivos(summary)),
@@ -501,7 +545,8 @@ class Juego:
                 self._format_metric_ratio(summary, "promedio_reingresos_hover"),
             ),
         ]
-        self._draw_kpi_cards(kpis)
+        kpi_rect = self._draw_kpi_cards(kpis, current_y)
+        current_y = kpi_rect.bottom + self._ui(18)
 
         secundarios = [
             (
@@ -549,35 +594,78 @@ class Juego:
                 ],
             ),
         ]
-        self._draw_secondary_metrics(secundarios)
-        self._draw_report_logo()
+        secondary_rect = self._draw_secondary_metrics(secundarios, current_y)
+        self._draw_report_logo(secondary_rect.bottom + self._ui(14))
         self._render_finished_help()
         self._render_close_button()
         self._render_cursor()
         pygame.display.flip()
 
-    def _draw_kpi_cards(self, kpis):
-        card_width = 230
-        card_height = 126
-        gap = 24
-        start_x = self.screen_rect.centerx - ((card_width * 2) + gap) / 2
-        start_y = 150
+    def _draw_kpi_cards(self, kpis, top_y):
+        card_gap = self._ui(24)
+        card_padding_x = self._ui(18)
+        card_padding_y = self._ui(16)
+        content_gap = self._ui(12)
+        border_radius = self._ui(18)
+        border_width = max(1, self._ui(2))
+        minimum_card_width = self._ui(230)
+        minimum_card_height = self._ui(126)
+        available_width = self.screen_rect.width - (self._ui(36) * 2)
+        rendered_cards = []
 
-        for index, (label, value) in enumerate(kpis):
-            row = index // 2
-            col = index % 2
+        for label, value in kpis:
+            value_surface = self.kpi_value_font.render(value, True, (26, 32, 44))
+            label_surface = self.kpi_label_font.render(label, True, (98, 108, 125))
+            rendered_cards.append((label_surface, value_surface))
+
+        card_width = max(
+            minimum_card_width,
+            max(
+                max(value_surface.get_width(), label_surface.get_width())
+                + (card_padding_x * 2)
+                for label_surface, value_surface in rendered_cards
+            ),
+        )
+        card_height = max(
+            minimum_card_height,
+            max(
+                value_surface.get_height()
+                + label_surface.get_height()
+                + content_gap
+                + (card_padding_y * 2)
+                for label_surface, value_surface in rendered_cards
+            ),
+        )
+        columns = 2 if len(kpis) > 1 and ((card_width * 2) + card_gap) <= available_width else 1
+        rows = (len(kpis) + columns - 1) // columns
+        total_width = (columns * card_width) + ((columns - 1) * card_gap)
+        total_height = (rows * card_height) + ((rows - 1) * card_gap)
+        start_x = int((self.screen_rect.width - total_width) / 2)
+
+        for index, (label_surface, value_surface) in enumerate(rendered_cards):
+            row = index // columns
+            col = index % columns
             rect = pygame.Rect(
-                start_x + col * (card_width + gap),
-                start_y + row * (card_height + gap),
+                start_x + col * (card_width + card_gap),
+                top_y + row * (card_height + card_gap),
                 card_width,
                 card_height,
             )
-            pygame.draw.rect(self.pantalla, (246, 248, 252), rect, border_radius=18)
-            pygame.draw.rect(self.pantalla, (214, 221, 230), rect, 2, border_radius=18)
-            value_surface = self.kpi_value_font.render(value, True, (26, 32, 44))
-            label_surface = self.kpi_label_font.render(label, True, (98, 108, 125))
-            content_height = value_surface.get_height() + 14 + label_surface.get_height()
-            content_top = rect.y + (rect.height - content_height) / 2
+            pygame.draw.rect(
+                self.pantalla,
+                (246, 248, 252),
+                rect,
+                border_radius=border_radius,
+            )
+            pygame.draw.rect(
+                self.pantalla,
+                (214, 221, 230),
+                rect,
+                border_width,
+                border_radius=border_radius,
+            )
+            content_height = value_surface.get_height() + content_gap + label_surface.get_height()
+            content_top = rect.y + int((rect.height - content_height) / 2)
             self.pantalla.blit(
                 value_surface,
                 (rect.centerx - value_surface.get_width() / 2, content_top),
@@ -586,60 +674,98 @@ class Juego:
                 label_surface,
                 (
                     rect.centerx - label_surface.get_width() / 2,
-                    content_top + value_surface.get_height() + 14,
+                    content_top + value_surface.get_height() + content_gap,
                 ),
             )
 
-    def _get_kpi_grid_rect(self):
-        card_width = 230
-        card_height = 126
-        gap = 24
-        start_x = self.screen_rect.centerx - ((card_width * 2) + gap) / 2
-        start_y = 150
-        total_width = (card_width * 2) + gap
-        total_height = (card_height * 2) + gap
-        return pygame.Rect(start_x, start_y, total_width, total_height)
+        return pygame.Rect(start_x, top_y, total_width, total_height)
 
-    def _draw_secondary_metrics(self, secundarios):
-        kpi_rect = self._get_kpi_grid_rect()
-        max_items = max(len(items) for _, items in secundarios)
-        section_title_height = self.small_font.get_height()
-        row_height = self.small_font.get_height() + 12
-        content_height = 28 + section_title_height + 18 + (max_items * row_height) + 18
-        box_rect = pygame.Rect(
-            self.screen_rect.centerx - 330,
-            kpi_rect.bottom + 22,
-            660,
-            content_height + 18,
-        )
-        pygame.draw.rect(self.pantalla, (248, 250, 252), box_rect, border_radius=20)
-        pygame.draw.rect(self.pantalla, (214, 221, 230), box_rect, 2, border_radius=18)
+    def _draw_secondary_metrics(self, secundarios, top_y):
+        box_padding_x = self._ui(28)
+        box_padding_y = self._ui(22)
+        section_gap_x = self._ui(24)
+        section_gap_y = self._ui(18)
+        line_gap = self._ui(10)
+        title_gap = self._ui(18)
+        box_title = self.small_font.render("Indicadores secundarios", True, (70, 78, 92))
+        section_layouts = []
+        uniform_section_width = self._ui(192)
+        uniform_section_height = 0
 
-        title = self.small_font.render("Indicadores secundarios", True, (70, 78, 92))
-        self.pantalla.blit(title, (box_rect.x + 28, box_rect.y + 24))
-
-        column_width = 192
-        section_gap = 28
-        start_x = box_rect.x + 32
-        section_y = box_rect.y + 68
-
-        for section_index, (section_title, items) in enumerate(secundarios):
-            section_x = start_x + section_index * (column_width + section_gap)
-            section_title_surface = self.small_font.render(
-                section_title, True, (70, 78, 92)
+        for section_title, items in secundarios:
+            section_title_surface = self.small_font.render(section_title, True, (70, 78, 92))
+            item_surfaces = [
+                self.small_font.render(f"{label}: {value}", True, (26, 32, 44))
+                for label, value in items
+            ]
+            content_width = max(
+                [section_title_surface.get_width(), *[surface.get_width() for surface in item_surfaces]]
             )
+            section_width = max(self._ui(192), content_width)
+            section_height = section_title_surface.get_height()
+            if item_surfaces:
+                section_height += self._ui(12)
+                section_height += sum(surface.get_height() for surface in item_surfaces)
+                section_height += line_gap * (len(item_surfaces) - 1)
+
+            uniform_section_width = max(uniform_section_width, section_width)
+            uniform_section_height = max(uniform_section_height, section_height)
+            section_layouts.append((section_title_surface, item_surfaces))
+
+        available_width = self.screen_rect.width - (self._ui(28) * 2) - (box_padding_x * 2)
+        columns = len(section_layouts)
+        while columns > 1:
+            required_width = (columns * uniform_section_width) + ((columns - 1) * section_gap_x)
+            if required_width <= available_width:
+                break
+            columns -= 1
+        rows = (len(section_layouts) + columns - 1) // columns
+        content_width = (columns * uniform_section_width) + ((columns - 1) * section_gap_x)
+        content_height = (rows * uniform_section_height) + ((rows - 1) * section_gap_y)
+        box_width = content_width + (box_padding_x * 2)
+        box_height = (
+            box_padding_y
+            + box_title.get_height()
+            + title_gap
+            + content_height
+            + box_padding_y
+        )
+        box_rect = pygame.Rect(
+            int((self.screen_rect.width - box_width) / 2),
+            top_y,
+            box_width,
+            box_height,
+        )
+        border_radius = self._ui(20)
+        pygame.draw.rect(self.pantalla, (248, 250, 252), box_rect, border_radius=border_radius)
+        pygame.draw.rect(
+            self.pantalla,
+            (214, 221, 230),
+            box_rect,
+            max(1, self._ui(2)),
+            border_radius=max(1, self._ui(18)),
+        )
+
+        box_title_y = box_rect.y + box_padding_y
+        self.pantalla.blit(box_title, (box_rect.x + box_padding_x, box_title_y))
+
+        content_start_x = box_rect.x + box_padding_x
+        content_start_y = box_title_y + box_title.get_height() + title_gap
+        section_inner_gap = self._ui(12)
+
+        for index, (section_title_surface, item_surfaces) in enumerate(section_layouts):
+            row = index // columns
+            col = index % columns
+            section_x = content_start_x + col * (uniform_section_width + section_gap_x)
+            section_y = content_start_y + row * (uniform_section_height + section_gap_y)
             self.pantalla.blit(section_title_surface, (section_x, section_y))
 
-            line_y = section_y + section_title_surface.get_height() + 14
-            for label, value in items:
-                item_surface = self.small_font.render(
-                    f"{label}: {value}", True, (26, 32, 44)
-                )
+            line_y = section_y + section_title_surface.get_height() + section_inner_gap
+            for item_surface in item_surfaces:
                 self.pantalla.blit(item_surface, (section_x, line_y))
-                line_y += row_height
+                line_y += item_surface.get_height() + line_gap
 
-                if label == "Finalizada en":
-                    line_y += 6
+        return box_rect
 
     def _render_finished_help(self):
         help_text = self.small_font.render(
@@ -649,14 +775,33 @@ class Juego:
             help_text,
             (
                 self.screen_rect.centerx - help_text.get_width() / 2,
-                self.screen_rect.height - 22,
+                self.screen_rect.height - help_text.get_height() - self._ui(10),
             ),
         )
 
-    def _draw_report_logo(self):
-        logo_x = self.screen_rect.centerx - self.report_logo_image.get_width() / 2
-        logo_y = self.screen_rect.height - 120
-        self.pantalla.blit(self.report_logo_image, (logo_x, logo_y))
+    def _draw_report_logo(self, preferred_top):
+        help_height = self.small_font.get_height()
+        logo_surface = self.report_logo_image
+        available_height = max(
+            1,
+            self.screen_rect.height
+            - help_height
+            - self._ui(22)
+            - max(self._ui(12), preferred_top),
+        )
+        if available_height < logo_surface.get_height():
+            scale = available_height / logo_surface.get_height()
+            if scale < 0.45:
+                return
+            logo_surface = self._scale_surface(logo_surface, scale)
+
+        max_logo_y = max(
+            self._ui(12),
+            self.screen_rect.height - help_height - self._ui(22) - logo_surface.get_height(),
+        )
+        logo_y = min(preferred_top, max_logo_y)
+        logo_x = self.screen_rect.centerx - logo_surface.get_width() / 2
+        self.pantalla.blit(logo_surface, (logo_x, logo_y))
 
     def _exportar_pdf_automatico(self):
         if self.session_recorder is None or self.session_recorder.output_dir is None:
@@ -730,14 +875,14 @@ class Juego:
                 (*outline_rgb, outline_alpha),
                 (start_x, start_y),
                 (end_x, end_y),
-                7,
+                self._ui(7),
             )
             pygame.draw.line(
                 overlay,
                 (*trace_rgb, trace_alpha),
                 (start_x, start_y),
                 (end_x, end_y),
-                5,
+                self._ui(5),
             )
 
         self.pantalla.blit(overlay, (0, 0))
@@ -751,18 +896,20 @@ class Juego:
         self.pantalla.blit(self.cursor_image, cursor_pos)
 
     def _get_close_button_visual_rect(self):
-        diameter = CLOSE_BUTTON_RADIUS * 2
+        radius = self._ui(CLOSE_BUTTON_RADIUS)
+        diameter = radius * 2
+        margin = self._ui(CLOSE_BUTTON_MARGIN)
         return pygame.Rect(
-            self.screen_rect.width - CLOSE_BUTTON_MARGIN - diameter,
-            CLOSE_BUTTON_MARGIN,
+            self.screen_rect.width - margin - diameter,
+            margin,
             diameter,
             diameter,
         )
 
     def _get_close_button_hit_rect(self):
         return self._get_close_button_visual_rect().inflate(
-            CLOSE_BUTTON_HIT_PADDING * 2,
-            CLOSE_BUTTON_HIT_PADDING * 2,
+            self._ui(CLOSE_BUTTON_HIT_PADDING * 2),
+            self._ui(CLOSE_BUTTON_HIT_PADDING * 2),
         )
 
     def _render_close_button(self):
@@ -776,36 +923,37 @@ class Juego:
         stroke_alpha = 168 if hovered else 118
         fill_alpha = 30 if hovered else 0
         center = (rect.width // 2, rect.height // 2)
+        button_radius = self._ui(CLOSE_BUTTON_RADIUS)
 
         if fill_alpha:
             pygame.draw.circle(
                 button_surface,
                 (*stroke_rgb, fill_alpha),
                 center,
-                CLOSE_BUTTON_RADIUS,
+                button_radius,
             )
         pygame.draw.circle(
             button_surface,
             (*stroke_rgb, stroke_alpha),
             center,
-            CLOSE_BUTTON_RADIUS,
-            2,
+            button_radius,
+            max(1, self._ui(2)),
         )
 
-        line_margin = 7
+        line_margin = self._ui(7)
         pygame.draw.line(
             button_surface,
             (*stroke_rgb, stroke_alpha),
             (line_margin, line_margin),
             (rect.width - line_margin, rect.height - line_margin),
-            2,
+            max(1, self._ui(2)),
         )
         pygame.draw.line(
             button_surface,
             (*stroke_rgb, stroke_alpha),
             (rect.width - line_margin, line_margin),
             (line_margin, rect.height - line_margin),
-            2,
+            max(1, self._ui(2)),
         )
         self.pantalla.blit(button_surface, rect.topleft)
 

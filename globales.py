@@ -11,6 +11,8 @@ DEFAULT_CONFIG = {
     "fullscreen": True,
     "window_width": 1280,
     "window_height": 720,
+    "ui_scale_multiplier": 1.0,
+    "font_scale_multiplier": 1.7,
     "show_cursor": False,
     "fps": 10,
     "music_volume": 0.05,
@@ -23,6 +25,10 @@ DEFAULT_CONFIG = {
     "background_color": [57, 67, 82],
 }
 WINDOW_ICON_PATH = "img/icono-ventana.png"
+BASE_WINDOW_SIZE = (1280, 720)
+MIN_SCALE_MULTIPLIER = 0.5
+MIN_AUTO_UI_SCALE = 0.75
+MAX_AUTO_UI_SCALE = 1.15
 
 
 def resource_path(relative_path):
@@ -59,6 +65,12 @@ def load_config(config_file="config.yaml"):
         config.update(loaded_config)
 
     config["background_color"] = [int(value) for value in config["background_color"]]
+    config["ui_scale_multiplier"] = sanitize_scale_multiplier(
+        config.get("ui_scale_multiplier", DEFAULT_CONFIG["ui_scale_multiplier"])
+    )
+    config["font_scale_multiplier"] = sanitize_scale_multiplier(
+        config.get("font_scale_multiplier", DEFAULT_CONFIG["font_scale_multiplier"])
+    )
     config["hover_explode_delay_seconds"] = max(
         0.0, float(config["hover_explode_delay_seconds"])
     )
@@ -68,6 +80,70 @@ def load_config(config_file="config.yaml"):
     config["data_output_dir"] = str(config["data_output_dir"])
     config["show_session_progress"] = bool(config["show_session_progress"])
     return config
+
+
+def sanitize_scale_multiplier(value, default=1.0):
+    try:
+        return max(MIN_SCALE_MULTIPLIER, float(value))
+    except (TypeError, ValueError):
+        return max(MIN_SCALE_MULTIPLIER, float(default))
+
+
+def get_windows_dpi_scale():
+    if sys.platform != "win32":
+        return 1.0
+
+    windll = getattr(ctypes, "windll", None)
+    if windll is None:
+        return 1.0
+
+    user32 = getattr(windll, "user32", None)
+    if user32 is not None:
+        get_dpi_for_system = getattr(user32, "GetDpiForSystem", None)
+        if get_dpi_for_system is not None:
+            try:
+                dpi_value = int(get_dpi_for_system())
+                if dpi_value > 0:
+                    return max(1.0, dpi_value / 96.0)
+            except Exception:
+                pass
+
+    shcore = getattr(windll, "shcore", None)
+    if shcore is not None:
+        get_scale_factor = getattr(shcore, "GetScaleFactorForDevice", None)
+        if get_scale_factor is not None:
+            try:
+                scale_factor = ctypes.c_uint()
+                if get_scale_factor(0, ctypes.byref(scale_factor)) == 0:
+                    return max(1.0, scale_factor.value / 100.0)
+            except Exception:
+                pass
+
+    return 1.0
+
+
+def calculate_auto_ui_scale(
+    window_size, dpi_scale=1.0, base_window_size=BASE_WINDOW_SIZE
+):
+    base_width, base_height = base_window_size
+    window_width, window_height = window_size
+    normalized_dpi = max(1.0, float(dpi_scale))
+    effective_width = max(1.0, float(window_width) / normalized_dpi)
+    effective_height = max(1.0, float(window_height) / normalized_dpi)
+    resolution_scale = min(effective_width / base_width, effective_height / base_height)
+    return max(MIN_AUTO_UI_SCALE, min(MAX_AUTO_UI_SCALE, resolution_scale))
+
+
+def calculate_ui_scales(config, window_size, dpi_scale=1.0):
+    auto_scale = calculate_auto_ui_scale(window_size, dpi_scale=dpi_scale)
+    return (
+        auto_scale * sanitize_scale_multiplier(
+            config.get("ui_scale_multiplier", DEFAULT_CONFIG["ui_scale_multiplier"])
+        ),
+        auto_scale * sanitize_scale_multiplier(
+            config.get("font_scale_multiplier", DEFAULT_CONFIG["font_scale_multiplier"])
+        ),
+    )
 
 
 def _set_window_icon(icon_path=WINDOW_ICON_PATH):

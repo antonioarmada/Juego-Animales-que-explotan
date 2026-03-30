@@ -35,6 +35,19 @@ class ConfigResolutionTest(unittest.TestCase):
             self.assertEqual(config["title"], "INTERNO")
             self.assertTrue(config["fullscreen"])
 
+    def test_load_config_applies_ui_scale_defaults_and_minimums(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_path = Path(tmp_dir) / "config.yaml"
+            config_path.write_text(
+                "ui_scale_multiplier: -1\nfont_scale_multiplier: 0\n",
+                encoding="utf-8",
+            )
+
+            config = globales.load_config(str(config_path))
+
+        self.assertEqual(config["ui_scale_multiplier"], globales.MIN_SCALE_MULTIPLIER)
+        self.assertEqual(config["font_scale_multiplier"], globales.MIN_SCALE_MULTIPLIER)
+
 
 class DisplayCreationTest(unittest.TestCase):
     def test_enable_high_dpi_support_is_noop_outside_windows(self):
@@ -78,6 +91,31 @@ class DisplayCreationTest(unittest.TestCase):
 
         image_load.assert_called_once_with(str(icon_path))
         set_icon.assert_called_once_with("icon-surface")
+
+
+class UiScaleCalculationTest(unittest.TestCase):
+    def test_calculate_auto_ui_scale_uses_dpi_adjusted_resolution(self):
+        scale = globales.calculate_auto_ui_scale((2736, 1824), dpi_scale=2.0)
+
+        self.assertAlmostEqual(scale, 1.06875)
+
+    def test_calculate_auto_ui_scale_is_limited_by_available_space(self):
+        scale = globales.calculate_auto_ui_scale((3840, 2160), dpi_scale=1.0)
+
+        self.assertEqual(scale, globales.MAX_AUTO_UI_SCALE)
+
+    def test_calculate_ui_scales_combines_auto_scale_and_multipliers(self):
+        ui_scale, text_scale = globales.calculate_ui_scales(
+            {
+                "ui_scale_multiplier": 1.2,
+                "font_scale_multiplier": 1.7,
+            },
+            (2736, 1824),
+            dpi_scale=2.0,
+        )
+
+        self.assertAlmostEqual(ui_scale, 1.06875 * 1.2)
+        self.assertAlmostEqual(text_scale, 1.06875 * 1.7)
 
 
 if __name__ == "__main__":

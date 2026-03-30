@@ -2,6 +2,10 @@ title: MAGIA EN EL ZOOLÓGICO
 fullscreen: true
 window_width: 1280
 window_height: 720
+# Escala general de UI para cards, paddings, margenes, bordes y botones.
+ui_scale_multiplier: 1.0
+# Escala exclusiva de tipografia. El valor final tambien considera resolucion y DPI.
+font_scale_multiplier: 1.7
 show_cursor: false
 fps: 10
 music_volume: 0.05

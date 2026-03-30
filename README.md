@@ -60,6 +60,8 @@ El juego lee [config.yaml](/Users/antonioemilioarmadacastillo/Documents/Invoa/Ju
 - `fullscreen`
 - `window_width`
 - `window_height`
+- `ui_scale_multiplier`
+- `font_scale_multiplier`
 - `show_cursor`
 - `fps`
 - `music_volume`
@@ -69,6 +71,23 @@ El juego lee [config.yaml](/Users/antonioemilioarmadacastillo/Documents/Invoa/Ju
 - `cursor_trace_hz`
 - `data_output_dir`
 - `show_session_progress`
+
+### Escala de UI y tipografia
+
+La interfaz ahora calcula una escala automatica a partir de:
+
+- la resolucion real de la ventana
+- la escala DPI del sistema operativo en Windows
+
+Sobre esa base se aplican dos multiplicadores configurables:
+
+- `ui_scale_multiplier`: ajusta la escala general de la UI, incluyendo cards, paddings, margenes, gaps, bordes, overlays y areas clickeables
+- `font_scale_multiplier`: ajusta solo la tipografia; por defecto queda en `1.7` para mejorar legibilidad en pantallas high-DPI
+
+El juego limita la escala automatica por el espacio disponible para no romper el layout en resoluciones mas chicas. Si necesitas afinar la legibilidad sin tocar la estetica general:
+
+- sube `font_scale_multiplier` para agrandar solo el texto
+- sube `ui_scale_multiplier` para agrandar toda la UI proporcionalmente
 
 En builds empaquetados, el juego primero busca un `config.yaml` externo al lado del ejecutable. Si no existe, usa el `config.yaml` incluido dentro del bundle como fallback.
 
