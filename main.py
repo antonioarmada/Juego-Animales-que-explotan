@@ -1,5 +1,11 @@
+import ctypes
+import os
+from datetime import datetime
+from pathlib import Path
 import random
 import re
+import subprocess
+import sys
 
 import pygame
 
@@ -46,6 +52,55 @@ CLOSE_BUTTON_MARGIN = 18
 CLOSE_BUTTON_RADIUS = 12
 CLOSE_BUTTON_HIT_PADDING = 12
 DEFAULT_FONT_NAME = "Arial"
+WINDOWS_TOUCH_KEYBOARD_PATHS = (
+    Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+    / "Common Files"
+    / "microsoft shared"
+    / "ink"
+    / "TabTip.exe",
+    Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "osk.exe",
+)
+
+
+def resolve_session_id(raw_session_id, now=None):
+    session_id = (raw_session_id or "").strip()
+    if not session_id:
+        timestamp = (now or datetime.now().astimezone()).strftime("%Y%m%d_%H%M%S")
+        return f"sesion_{timestamp}"
+
+    if len(session_id) > MAX_SESSION_ID_LENGTH:
+        raise ValueError(f"El identificador no puede superar {MAX_SESSION_ID_LENGTH} caracteres.")
+    if not SAFE_SESSION_ID_PATTERN.fullmatch(session_id):
+        raise ValueError("Usa letras, numeros, _ o -.")
+    return session_id
+
+
+def draw_translucent_rounded_panel(
+    target_surface,
+    rect,
+    fill_color=(246, 248, 252, 128),
+    border_color=(214, 221, 230),
+    border_width=2,
+    border_radius=16,
+    border_inner_radius=None,
+):
+    panel_rect = pygame.Rect(rect)
+    panel_surface = pygame.Surface(panel_rect.size, pygame.SRCALPHA)
+    pygame.draw.rect(
+        panel_surface,
+        fill_color,
+        panel_surface.get_rect(),
+        border_radius=border_radius,
+    )
+    pygame.draw.rect(
+        panel_surface,
+        border_color,
+        panel_surface.get_rect(),
+        border_width,
+        border_radius=border_inner_radius if border_inner_radius is not None else border_radius,
+    )
+    target_surface.blit(panel_surface, panel_rect.topleft)
+    return panel_surface
 
 
 def _color_luminance(color):
@@ -69,6 +124,49 @@ def _ensure_color_contrast(color, background_color, min_luminance_delta=92):
     target_channel = 255 if background_luminance < 128 else 0
     factor = min(1.0, ((min_luminance_delta - luminance_delta) / 255) + 0.35)
     return _blend_color(color, target_channel, factor)
+
+
+def _find_windows_touch_keyboard():
+    if sys.platform != "win32":
+        return None
+
+    for path in WINDOWS_TOUCH_KEYBOARD_PATHS:
+        if path.exists():
+            return path
+    return None
+
+
+def _is_windows_touch_keyboard_visible():
+    if sys.platform != "win32":
+        return False
+
+    windll = getattr(ctypes, "windll", None)
+    user32 = getattr(windll, "user32", None) if windll is not None else None
+    if user32 is None:
+        return False
+
+    try:
+        return any(
+            user32.FindWindowW(window_class_name, None)
+            for window_class_name in ("IPTip_Main_Window", "OSKMainClass")
+        )
+    except Exception:
+        return False
+
+
+def show_windows_touch_keyboard():
+    if sys.platform != "win32" or _is_windows_touch_keyboard_visible():
+        return False
+
+    keyboard_path = _find_windows_touch_keyboard()
+    if keyboard_path is None:
+        return False
+
+    try:
+        subprocess.Popen([str(keyboard_path)])
+        return True
+    except OSError:
+        return False
 
 
 class Juego:
@@ -113,6 +211,8 @@ class Juego:
         self.attempt_count = 0
         self.completed_target_count = 0
         self.session_id_input = ""
+        self.session_input_rect = pygame.Rect(0, 0, 0, 0)
+        self.session_continue_button_rect = pygame.Rect(0, 0, 0, 0)
         self.input_error = ""
         self.finished_message = ""
         self.finished_summary = None
@@ -235,14 +335,10 @@ class Juego:
         )
 
     def _start_session(self):
-        session_id = self.session_id_input.strip()
-        if not session_id:
-            self.input_error = "Ingresa un identificador de sesion."
-            return
-        if len(session_id) > MAX_SESSION_ID_LENGTH or not SAFE_SESSION_ID_PATTERN.fullmatch(
-            session_id
-        ):
-            self.input_error = "Usa letras, numeros, _ o -."
+        try:
+            session_id = resolve_session_id(self.session_id_input)
+        except ValueError as exc:
+            self.input_error = str(exc)
             return
 
         self.input_error = ""
@@ -311,13 +407,104 @@ class Juego:
             self.input_error = ""
             return
 
-        if (
-            event.unicode
-            and len(self.session_id_input) < MAX_SESSION_ID_LENGTH
-            and SAFE_SESSION_ID_PATTERN.fullmatch(event.unicode)
-        ):
-            self.session_id_input += event.unicode
-            self.input_error = ""
+    def _handle_start_screen_text_input(self, text):
+        if not text:
+            return
+
+        remaining_chars = MAX_SESSION_ID_LENGTH - len(self.session_id_input)
+        if remaining_chars <= 0:
+            return
+
+        sanitized_text = "".join(
+            character
+            for character in text
+            if SAFE_SESSION_ID_PATTERN.fullmatch(character)
+        )
+        if not sanitized_text:
+            return
+
+        self.session_id_input += sanitized_text[:remaining_chars]
+        self.input_error = ""
+
+    def _handle_start_screen_pointer_down(self, position):
+        continue_button_rect = getattr(self, "session_continue_button_rect", pygame.Rect(0, 0, 0, 0))
+        if continue_button_rect.collidepoint(position):
+            self._start_session()
+            return True
+        if not self.session_input_rect.collidepoint(position):
+            return False
+
+        pygame.key.start_text_input()
+        show_windows_touch_keyboard()
+        return True
+
+    def _get_touch_position(self, event):
+        return (
+            int(event.x * self.screen_rect.width),
+            int(event.y * self.screen_rect.height),
+        )
+
+    def _render_start_screen_input(self, top_y, session_text, continue_text):
+        input_padding_x = self._ui(20)
+        input_padding_y = self._ui(14)
+        button_padding_x = self._ui(20)
+        button_padding_y = self._ui(14)
+        content_gap = self._ui(14)
+        min_button_width = self._ui(150)
+        max_total_width = self.screen_rect.width - self._ui(96)
+        min_width = min(self._ui(460), max(self._ui(220), max_total_width - min_button_width - content_gap))
+        input_width = max(min_width, session_text.get_width() + (input_padding_x * 2))
+        input_height = max(
+            session_text.get_height() + (input_padding_y * 2),
+            continue_text.get_height() + (button_padding_y * 2),
+        )
+        button_width = max(min_button_width, continue_text.get_width() + (button_padding_x * 2))
+        total_width = min(max_total_width, input_width + content_gap + button_width)
+        input_width = max(self._ui(180), total_width - content_gap - button_width)
+        border_radius = self._ui(16)
+        self.session_input_rect = pygame.Rect(
+            int(self.screen_rect.centerx - total_width / 2),
+            int(top_y),
+            int(input_width),
+            int(input_height),
+        )
+        self.session_continue_button_rect = pygame.Rect(
+            self.session_input_rect.right + content_gap,
+            int(top_y),
+            int(button_width),
+            int(input_height),
+        )
+
+        draw_translucent_rounded_panel(
+            self.pantalla,
+            self.session_input_rect,
+            fill_color=(246, 248, 252, 36),
+            border_radius=border_radius,
+            border_width=max(1, self._ui(2)),
+        )
+        self.pantalla.blit(
+            session_text,
+            (
+                self.session_input_rect.x + input_padding_x,
+                self.session_input_rect.centery - (session_text.get_height() / 2),
+            ),
+        )
+        button_hovered = self.session_continue_button_rect.collidepoint(pygame.mouse.get_pos())
+        draw_translucent_rounded_panel(
+            self.pantalla,
+            self.session_continue_button_rect,
+            fill_color=(246, 248, 252, 96 if button_hovered else 64),
+            border_radius=border_radius,
+            border_width=max(1, self._ui(2)),
+        )
+        self.pantalla.blit(
+            continue_text,
+            (
+                self.session_continue_button_rect.centerx - (continue_text.get_width() / 2),
+                self.session_continue_button_rect.centery - (continue_text.get_height() / 2),
+            ),
+        )
+        return self.session_input_rect.height
 
     def eventos_loop(self):
         for event in pygame.event.get():
@@ -326,11 +513,17 @@ class Juego:
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if self._get_close_button_hit_rect().collidepoint(event.pos):
                     self._request_exit()
+                elif self.state == GAME_STATE_START_SCREEN:
+                    self._handle_start_screen_pointer_down(event.pos)
+            elif event.type == pygame.FINGERDOWN and self.state == GAME_STATE_START_SCREEN:
+                self._handle_start_screen_pointer_down(self._get_touch_position(event))
             elif event.type == pygame.KEYDOWN:
                 if self.state == GAME_STATE_START_SCREEN:
                     self._handle_start_screen_keydown(event)
                 elif event.key == pygame.K_ESCAPE:
                     self._request_exit()
+            elif event.type == pygame.TEXTINPUT and self.state == GAME_STATE_START_SCREEN:
+                self._handle_start_screen_text_input(event.text)
 
     def _hover_elapsed_ms(self, now_ms):
         if self.hover_collision_started_at is None:
@@ -408,58 +601,94 @@ class Juego:
         session_text = self.ui_font.render(
             self.session_id_input or "_", True, (255, 230, 160)
         )
+        continue_text = self.ui_font.render("Continuar", True, (255, 255, 255))
         help_text = self.small_font.render(
-            "ENTER para comenzar", True, (150, 150, 150)
+            "Tambien podes continuar sin nombre (ENTER o boton Continuar).",
+            True,
+            (150, 150, 150),
         )
         error_text = None
         if self.input_error:
             error_text = self.small_font.render(self.input_error, True, (255, 120, 120))
 
+        layout = self._build_start_screen_layout(
+            title=title,
+            prompt=prompt,
+            session_text=session_text,
+            help_text=help_text,
+            error_text=error_text,
+            continue_text=continue_text,
+        )
+
+        self.pantalla.blit(self.logo_image, layout["logo_pos"])
+        self.pantalla.blit(title, layout["title_pos"])
+        self.pantalla.blit(prompt, layout["prompt_pos"])
+        self._render_start_screen_input(layout["input_top_y"], session_text, continue_text)
+        self.pantalla.blit(help_text, layout["help_pos"])
+        if error_text is not None:
+            self.pantalla.blit(error_text, layout["error_pos"])
+
+        self._render_footer()
+        self._render_close_button()
+        self._render_cursor()
+        pygame.display.flip()
+
+    def _build_start_screen_layout(
+        self, title, prompt, session_text, help_text, error_text, continue_text
+    ):
         footer_reserved = self.txt_escape.get_height() + self._ui(28)
         spacing_after_logo = self._ui(24)
         spacing_large = self._ui(34)
         spacing_medium = self._ui(18)
         spacing_small = self._ui(12)
-        surfaces = [
-            self.logo_image,
-            title,
-            prompt,
-            session_text,
-            help_text,
-        ]
-        spacings = [
-            spacing_after_logo,
-            spacing_large,
-            spacing_medium,
-            spacing_medium,
-        ]
+        input_preview_height = max(
+            session_text.get_height() + (self._ui(14) * 2),
+            continue_text.get_height() + (self._ui(14) * 2),
+        )
+        content_height = (
+            self.logo_image.get_height()
+            + spacing_after_logo
+            + title.get_height()
+            + spacing_large
+            + prompt.get_height()
+            + spacing_medium
+            + input_preview_height
+            + spacing_medium
+            + help_text.get_height()
+        )
         if error_text is not None:
-            surfaces.append(error_text)
-            spacings.append(spacing_small)
+            content_height += spacing_small + error_text.get_height()
 
-        content_height = sum(surface.get_height() for surface in surfaces) + sum(spacings)
         start_y = max(
             self._ui(20),
             int((self.screen_rect.height - footer_reserved - content_height) / 2),
         )
         current_y = start_y
 
-        for index, surface in enumerate(surfaces):
-            self.pantalla.blit(
-                surface,
-                (
-                    self.screen_rect.centerx - surface.get_width() / 2,
-                    current_y,
-                ),
-            )
-            current_y += surface.get_height()
-            if index < len(spacings):
-                current_y += spacings[index]
+        logo_pos = (self.screen_rect.centerx - self.logo_image.get_width() / 2, current_y)
+        current_y += self.logo_image.get_height() + spacing_after_logo
+        title_pos = (self.screen_rect.centerx - title.get_width() / 2, current_y)
+        current_y += title.get_height() + spacing_large
+        prompt_pos = (self.screen_rect.centerx - prompt.get_width() / 2, current_y)
+        current_y += prompt.get_height() + spacing_medium
+        input_top_y = current_y
+        current_y += input_preview_height
+        current_y += spacing_medium
+        help_pos = (self.screen_rect.centerx - help_text.get_width() / 2, current_y)
+        current_y += help_text.get_height()
+        error_pos = None
+        if error_text is not None:
+            current_y += spacing_small
+            error_pos = (self.screen_rect.centerx - error_text.get_width() / 2, current_y)
 
-        self._render_footer()
-        self._render_close_button()
-        self._render_cursor()
-        pygame.display.flip()
+        return {
+            "logo_pos": logo_pos,
+            "title_pos": title_pos,
+            "prompt_pos": prompt_pos,
+            "input_top_y": input_top_y,
+            "help_pos": help_pos,
+            "error_pos": error_pos,
+        }
 
     def _render_footer(self):
         self.pantalla.blit(
@@ -651,21 +880,13 @@ class Juego:
                 card_width,
                 card_height,
             )
-            card_surface = pygame.Surface(rect.size, pygame.SRCALPHA)
-            pygame.draw.rect(
-                card_surface,
-                (246, 248, 252, 128),
-                card_surface.get_rect(),
+            draw_translucent_rounded_panel(
+                self.pantalla,
+                rect,
+                fill_color=(246, 248, 252, 128),
+                border_width=border_width,
                 border_radius=border_radius,
             )
-            pygame.draw.rect(
-                card_surface,
-                (214, 221, 230),
-                card_surface.get_rect(),
-                border_width,
-                border_radius=border_radius,
-            )
-            self.pantalla.blit(card_surface, rect.topleft)
             content_height = value_surface.get_height() + content_gap + label_surface.get_height()
             content_top = rect.y + int((rect.height - content_height) / 2)
             self.pantalla.blit(
@@ -739,21 +960,14 @@ class Juego:
             box_height,
         )
         border_radius = self._ui(20)
-        box_surface = pygame.Surface(box_rect.size, pygame.SRCALPHA)
-        pygame.draw.rect(
-            box_surface,
-            (248, 250, 252, 128),
-            box_surface.get_rect(),
+        draw_translucent_rounded_panel(
+            self.pantalla,
+            box_rect,
+            fill_color=(246, 248, 252, 128),
+            border_width=max(1, self._ui(2)),
             border_radius=border_radius,
+            border_inner_radius=max(1, self._ui(18)),
         )
-        pygame.draw.rect(
-            box_surface,
-            (214, 221, 230),
-            box_surface.get_rect(),
-            max(1, self._ui(2)),
-            border_radius=max(1, self._ui(18)),
-        )
-        self.pantalla.blit(box_surface, box_rect.topleft)
 
         box_title_y = box_rect.y + box_padding_y
         self.pantalla.blit(box_title, (box_rect.x + box_padding_x, box_title_y))
